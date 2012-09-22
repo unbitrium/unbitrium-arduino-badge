@@ -155,7 +155,6 @@ void SetColour(int pin, byte red, byte green, byte blue)
 void setup() {
   wdt_enable(WDTO_8S);
   Mouse.begin();
-  Keyboard.begin();
   Serial.begin(9600);
   Serial.println("INIT");
   position = 0;
@@ -171,7 +170,7 @@ void setup() {
   mode =   EEPROM.read(0);
   pinMode(PIN_BUTTON, INPUT_PULLUP);
   pinMode(PIN_STATUS_LED, OUTPUT);
-  attachInterrupt(INT_BUTTON, button_press, LOW);
+  attachInterrupt(INT_BUTTON, button_press, FALLING);
   irrecv.enableIRIn(); // Start the receiver
   last_ir=millis();
 }
