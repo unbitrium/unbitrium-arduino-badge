@@ -289,6 +289,10 @@ void loop()
         delay(100);
       break;
       case 'M':
+        mode = Serial.parseInt() - 1;
+        button_press();
+      break;
+      case 'N':
         button_press();
       break;
       case 'T':
