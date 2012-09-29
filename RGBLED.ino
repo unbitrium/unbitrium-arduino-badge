@@ -3,6 +3,9 @@
 #include <avr/sleep.h>
 #include <avr/wdt.h>
 #include <IRremote.h>
+#include <SPI.h>
+#include "nRF24L01.h"
+#include "RF24.h"
 #include <EEPROM.h>
 
 #define MODE_OFF 0
@@ -12,6 +15,11 @@
 #define MODE_PULSE 4
 #define MODE_COUNT 5
 #define MODE_TEST 255
+
+#define RF_ADDR_BADGE 0xF0F0F0F011LL
+#define RF_ADDR_CONTROL 0xF0F0F0F012LL
+#define RF_SIZE 32
+RF24 radio(A0,A1);
 
 #define PIN_STATUS_LED 13
 #define LIGHT_PWM_MAX 128
@@ -54,6 +62,13 @@ void button_press() {
   EEPROM.write(0, mode);
   Serial.print("MODE ");
   Serial.println(mode);
+  byte data[RF_SIZE];
+  memset(data, 0, sizeof(data));
+  data[0] = 'M';
+  data[1] = '0' + mode;
+  radio.stopListening();
+  radio.write(data, RF_SIZE);
+  radio.startListening();
 }
 
 byte leftLED[3] = {0};
@@ -171,8 +186,19 @@ void setup() {
   pinMode(PIN_BUTTON, INPUT_PULLUP);
   pinMode(PIN_STATUS_LED, OUTPUT);
   attachInterrupt(INT_BUTTON, button_press, FALLING);
-  irrecv.enableIRIn(); // Start the receiver
+//  irrecv.enableIRIn(); // Start the receiver
   last_ir=millis();
+  
+  TXLED1;RXLED1;
+  radio.begin();
+  radio.setRetries(15,15);
+  radio.setPayloadSize(RF_SIZE);
+  radio.setAutoAck(true);
+  radio.setChannel(1);
+  radio.openReadingPipe(1,RF_ADDR_BADGE);
+  radio.openWritingPipe(RF_ADDR_CONTROL);
+  radio.startListening();
+  TXLED0;RXLED0;
 }
 
 void power_save_sleep()
@@ -206,6 +232,7 @@ void power_save_sleep()
     wdt_disable();
     USBDevice.detach();
     set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+    radio.stopListening();
     TXLED1; RXLED1; digitalWrite(PIN_STATUS_LED, HIGH);
     delay(100);
     TXLED0; RXLED0; digitalWrite(PIN_STATUS_LED, LOW);
@@ -334,6 +361,59 @@ void loop()
       break;
     }
   }
+  if (radio.available())
+  {
+    byte data[RF_SIZE];
+    memset(data, 0, RF_SIZE);
+    if (radio.read( &data, RF_SIZE))
+    {
+      switch(data[0])
+      {
+        case 'P':
+          memset(data, 0, RF_SIZE);
+          data[0] = 'P';
+          memcpy(&data[1], leftLED, 3);
+          memcpy(&data[4], rightLED, 3);
+          radio.stopListening();
+          radio.write(data, RF_SIZE);
+          radio.startListening();
+        break;
+        case 'L':
+          mode = MODE_TEST;
+          SetColour(PIN_LED_LEFT, data[1], data[2], data[3]);
+          SetColour(PIN_LED_RIGHT, data[4], data[5], data[6]);
+          radio.stopListening();
+          radio.write(data, RF_SIZE);
+          radio.startListening();
+        break;
+        case 'B':
+          brightness=data[1];
+          radio.stopListening();
+          radio.write(data, RF_SIZE);
+          radio.startListening();
+        break;
+        case 'M':
+          mode = data[1] - 1;
+          button_press();
+        break;
+        case 'N':
+          button_press();
+        break;
+      }
+    }
+  }
+  static unsigned long lastsend = millis();
+  if (millis() - lastsend > 10000)
+  {
+    lastsend = millis();
+    byte data[RF_SIZE];
+    memset(data, 0, RF_SIZE);
+    data[0] = 'H';
+    radio.stopListening();
+    radio.write(data, RF_SIZE);
+    radio.startListening();
+  }
+    
   int howBright = brightness;
   switch(mode)
   {
