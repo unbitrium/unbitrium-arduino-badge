@@ -272,7 +272,7 @@ void check_rf()
 void setup() {
   wdt_enable(WDTO_2S);
   Mouse.begin();
-  Serial.begin(9600);
+  Serial.begin(115200);
   Serial.println("INIT");
   position = 0;
   powerdown = 0;

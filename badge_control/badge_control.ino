@@ -102,22 +102,8 @@ void bring_up_radio(byte channel)
 void setup(void)
 {
   randomSeed(analogRead(5) + analogRead(4) + analogRead(3));
-  Serial.begin(57600);
+  Serial.begin(115200);
 
-/*  byte number[RF_CHANNELS] = {0};
-  while (true)
-  {
-    number[find_channel()]++;
-//    Serial.println(":");
-    for (int x=0; x<RF_CHANNELS; x++)
-    {
-      if (number[x] > 9)
-        number[x] = 9;
-//      Serial.print(number[x]);
-    }
-    Serial.println("");
-  }
-  */
   Serial.print("Selecting channel ");
   byte target_channel = find_channel();
   Serial.println(target_channel);
