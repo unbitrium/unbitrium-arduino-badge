@@ -27,6 +27,7 @@ IRrecv irrecv(PIN_IR_IN);
 decode_results results;
 
 volatile int mode;
+boolean radioup = false;
 volatile unsigned long powerdown;
 volatile unsigned long position;
 volatile int brightness;
@@ -62,13 +63,17 @@ void button_press() {
   EEPROM.write(0, mode);
   Serial.print("MODE ");
   Serial.println(mode);
-  byte data[RF_SIZE];
-  memset(data, 0, sizeof(data));
-  data[0] = 'M';
-  data[1] = '0' + mode;
-  radio.stopListening();
-  radio.write(data, RF_SIZE);
-  radio.startListening();
+  
+  if (radioup)
+  {
+    byte data[RF_SIZE];
+    memset(data, 0, sizeof(data));
+    data[0] = 'M';
+    data[1] = '0' + mode;
+    radio.stopListening();
+    radio.write(data, RF_SIZE);
+    radio.startListening();
+  }
 }
 
 byte leftLED[3] = {0};
@@ -169,7 +174,6 @@ void SetColour(int pin, byte red, byte green, byte blue)
 
 unsigned long radiotime = 0;
 byte radio_channel = 0;
-boolean radioup = false;
 void check_rf()
 {
   if (!radioup && millis() - radiotime < 5000)
@@ -187,7 +191,7 @@ void check_rf()
     radiotime = millis() + 100; // listen for 100ms
     radio.begin();
     radio.powerUp();
-    radio.setRetries(15,15);
+    radio.setRetries(2,2);
     radio.setPayloadSize(RF_SIZE);
     radio.setAutoAck(true);
     radio.setChannel(radio_channel);
