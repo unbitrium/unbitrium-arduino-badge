@@ -2,7 +2,7 @@
 #include <TimerOne.h>
 #include <avr/sleep.h>
 #include <avr/wdt.h>
-#include <IRremote.h>
+//#include <IRremote.h>
 #include <SPI.h>
 #include "nRF24L01.h"
 #include "RF24.h"
@@ -23,8 +23,8 @@ RF24 radio(A0,A1);
 
 #define PIN_STATUS_LED 13
 #define LIGHT_PWM_MAX 128
-IRrecv irrecv(PIN_IR_IN);
-decode_results results;
+//IRrecv irrecv(PIN_IR_IN);
+//decode_results results;
 
 volatile int mode;
 boolean radioup = false;
@@ -340,8 +340,29 @@ void power_save_sleep()
   TXLED0; RXLED0; digitalWrite(PIN_STATUS_LED, LOW);
 }
 
+boolean check_mouse();
+
+void check_ir()
+{
+/*
+  if (irrecv.decode(&results))
+  {
+    irrecv.resume();
+    if (!last_ir)
+    {
+      if(!check_mouse())
+      {
+        button_press();
+      }
+    }
+    last_ir = millis();
+    powerdown = 0;
+  }
+  */
+}
 boolean check_mouse()
 {
+  /*
   if (results.decode_type == RC5)
   {
     if (results.value == 0x15 || results.value == 0x815)
@@ -366,25 +387,14 @@ boolean check_mouse()
     }
   }
   return false;
+  */
 }
 
 void loop()
 {
   wdt_reset();
   check_rf();
-  if (irrecv.decode(&results))
-  {
-    irrecv.resume();
-    if (!last_ir)
-    {
-      if(!check_mouse())
-      {
-        button_press();
-      }
-    }
-    last_ir = millis();
-    powerdown = 0;
-  }
+  check_ir();
   if (millis() - last_ir <150)
   {
     TXLED1; RXLED0; digitalWrite(PIN_STATUS_LED, LOW);
