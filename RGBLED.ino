@@ -16,8 +16,8 @@
 #define MODE_COUNT 5
 #define MODE_TEST 255
 
-#define RF_ADDR_BADGE 0xF0F0F0F011LL
-#define RF_ADDR_CONTROL 0xF0F0F0F012LL
+#define RF_ADDR_BADGE 0xBABABABABALL
+#define RF_ADDR_CONTROL 0xF0F0F0F0F0LL
 #define RF_SIZE 32
 RF24 radio(A0,A1);
 
@@ -167,8 +167,106 @@ void SetColour(int pin, byte red, byte green, byte blue)
   return;
 }
 
+unsigned long radiotime = 0;
+byte radio_channel = 0;
+boolean radioup = false;
+void check_rf()
+{
+  if (!radioup && millis() - radiotime < 5000)
+  {
+    // if radio is down and it has been less than 5 seconds
+    // since last activity, do nothing
+    return;
+  }
+  RXLED1;
+  // active radio, or idle radio that has been powered down
+  // for > 5 seconds
+  if (!radioup)
+  {
+    // if radio is down, bring it up, also reset activity time
+    radiotime = millis() + 100; // listen for 100ms
+    radio.begin();
+    radio.powerUp();
+    radio.setRetries(15,15);
+    radio.setPayloadSize(RF_SIZE);
+    radio.setAutoAck(true);
+    radio.setChannel(radio_channel);
+    radio.openReadingPipe(1,RF_ADDR_BADGE);
+    radio.openWritingPipe(RF_ADDR_CONTROL);
+    radio.startListening();
+    radioup = true;
+    Serial.print("Radio Up ");
+    Serial.println(radio_channel);
+  }
+  // check for new data
+  if (radio.available())
+  {
+    byte data[RF_SIZE];
+    memset(data, 0, RF_SIZE);
+    radio.read( &data, RF_SIZE);
+    if (data[0])
+    {
+      Serial.print("Radio Data ");
+      Serial.println((char)data[0]);
+      radiotime = millis() + 1000;
+      switch(data[0])
+      {
+        case 'P':
+          memset(data, 0, RF_SIZE);
+          data[0] = 'P';
+          memcpy(&data[1], leftLED, 3);
+          memcpy(&data[4], rightLED, 3);
+          radio.stopListening();
+          radio.write(data, RF_SIZE);
+          radio.startListening();
+        break;
+        case 'L':
+          mode = MODE_TEST;
+          SetColour(PIN_LED_LEFT, data[1], data[2], data[3]);
+          SetColour(PIN_LED_RIGHT, data[4], data[5], data[6]);
+          radio.stopListening();
+          radio.write(data, RF_SIZE);
+          radio.startListening();
+        break;
+        case 'B':
+          brightness=data[1];
+          radio.stopListening();
+          radio.write(data, RF_SIZE);
+          radio.startListening();
+        break;
+        case 'M':
+          mode = data[1] - 1;
+          button_press();
+        break;
+        case 'N':
+          button_press();
+        break;
+        case 'K':
+          while(true)
+            sleep_mode();
+        case 'R':
+          radio_channel = data[1];
+          radioup = false;
+        break;
+      }
+    }
+  }  
+  if (millis() > radiotime)
+  {
+    // if radio is up, but has been idle for too long
+    // shut it down and reset to the lobby channel
+    RXLED0;
+    radio.stopListening();
+    radio.powerDown();
+    radioup = false;
+    radio_channel = 0;
+    Serial.println("Radio Down");
+    return;
+  }
+}
+
 void setup() {
-  wdt_enable(WDTO_8S);
+  wdt_enable(WDTO_2S);
   Mouse.begin();
   Serial.begin(9600);
   Serial.println("INIT");
@@ -189,16 +287,6 @@ void setup() {
 //  irrecv.enableIRIn(); // Start the receiver
   last_ir=millis();
   
-  TXLED1;RXLED1;
-  radio.begin();
-  radio.setRetries(15,15);
-  radio.setPayloadSize(RF_SIZE);
-  radio.setAutoAck(true);
-  radio.setChannel(1);
-  radio.openReadingPipe(1,RF_ADDR_BADGE);
-  radio.openWritingPipe(RF_ADDR_CONTROL);
-  radio.startListening();
-  TXLED0;RXLED0;
 }
 
 void power_save_sleep()
@@ -233,11 +321,13 @@ void power_save_sleep()
     USBDevice.detach();
     set_sleep_mode(SLEEP_MODE_PWR_DOWN);
     radio.stopListening();
+    radio.powerDown();
     TXLED1; RXLED1; digitalWrite(PIN_STATUS_LED, HIGH);
     delay(100);
     TXLED0; RXLED0; digitalWrite(PIN_STATUS_LED, LOW);
     if (powerdown)
       sleep_mode();
+    radio.powerUp();
     // DEVICE IS POWERED DOWN HERE UNTIL INTERRUPT
     void(* resetFunc) (void) = 0;
     resetFunc();
@@ -277,6 +367,7 @@ boolean check_mouse()
 void loop()
 {
   wdt_reset();
+  check_rf();
   if (irrecv.decode(&results))
   {
     irrecv.resume();
@@ -361,59 +452,7 @@ void loop()
       break;
     }
   }
-  if (radio.available())
-  {
-    byte data[RF_SIZE];
-    memset(data, 0, RF_SIZE);
-    if (radio.read( &data, RF_SIZE))
-    {
-      switch(data[0])
-      {
-        case 'P':
-          memset(data, 0, RF_SIZE);
-          data[0] = 'P';
-          memcpy(&data[1], leftLED, 3);
-          memcpy(&data[4], rightLED, 3);
-          radio.stopListening();
-          radio.write(data, RF_SIZE);
-          radio.startListening();
-        break;
-        case 'L':
-          mode = MODE_TEST;
-          SetColour(PIN_LED_LEFT, data[1], data[2], data[3]);
-          SetColour(PIN_LED_RIGHT, data[4], data[5], data[6]);
-          radio.stopListening();
-          radio.write(data, RF_SIZE);
-          radio.startListening();
-        break;
-        case 'B':
-          brightness=data[1];
-          radio.stopListening();
-          radio.write(data, RF_SIZE);
-          radio.startListening();
-        break;
-        case 'M':
-          mode = data[1] - 1;
-          button_press();
-        break;
-        case 'N':
-          button_press();
-        break;
-      }
-    }
-  }
-  static unsigned long lastsend = millis();
-  if (millis() - lastsend > 10000)
-  {
-    lastsend = millis();
-    byte data[RF_SIZE];
-    memset(data, 0, RF_SIZE);
-    data[0] = 'H';
-    radio.stopListening();
-    radio.write(data, RF_SIZE);
-    radio.startListening();
-  }
-    
+
   int howBright = brightness;
   switch(mode)
   {
