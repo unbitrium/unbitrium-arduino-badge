@@ -70,9 +70,7 @@ void button_press() {
     memset(data, 0, sizeof(data));
     data[0] = 'M';
     data[1] = '0' + mode;
-    radio.stopListening();
-    radio.write(data, RF_SIZE);
-    radio.startListening();
+    radio.writeAckPayload(1,data, RF_SIZE);
   }
 }
 
@@ -195,6 +193,7 @@ void check_rf()
     radio.setRetries(2,2);
     radio.setPayloadSize(RF_SIZE);
     radio.setAutoAck(true);
+    radio.enableAckPayload();
     radio.setChannel(radio_channel);
     radio.openReadingPipe(1,RF_ADDR_BADGE);
     radio.openWritingPipe(RF_ADDR_CONTROL);
@@ -204,7 +203,7 @@ void check_rf()
     Serial.println(radio_channel);
   }
   // check for new data
-  if (radio.available())
+  while (radio.available())
   {
     byte data[RF_SIZE];
     memset(data, 0, RF_SIZE);
@@ -217,27 +216,21 @@ void check_rf()
       switch(data[0])
       {
         case 'P':
-          memset(data, 0, RF_SIZE);
           data[0] = 'P';
+          memcpy(&data[7], &data[1], 4);
           memcpy(&data[1], leftLED, 3);
           memcpy(&data[4], rightLED, 3);
-          radio.stopListening();
-          radio.write(data, RF_SIZE);
-          radio.startListening();
+          radio.writeAckPayload(1, data, RF_SIZE);
         break;
         case 'L':
           mode = MODE_TEST;
           SetColour(PIN_LED_LEFT, data[1], data[2], data[3]);
           SetColour(PIN_LED_RIGHT, data[4], data[5], data[6]);
-          radio.stopListening();
-          radio.write(data, RF_SIZE);
-          radio.startListening();
+          radio.writeAckPayload(1, data, RF_SIZE);
         break;
         case 'B':
           brightness=data[1];
-          radio.stopListening();
-          radio.write(data, RF_SIZE);
-          radio.startListening();
+          radio.writeAckPayload(1, data, RF_SIZE);
         break;
         case 'M':
           mode = data[1] - 1;

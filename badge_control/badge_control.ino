@@ -14,8 +14,6 @@ byte find_channel()
 {
   radio.begin();
   radio.setAutoAck(false);
-  radio.startListening();
-  radio.stopListening();
   int values[RF_CHANNELS];
   int totalSignal = 0;
   memset(values,0,sizeof(values));
@@ -91,9 +89,10 @@ byte find_channel()
 void bring_up_radio(byte channel)
 {
   radio.begin();
-  radio.setRetries(15,15);
+  radio.setRetries(1,15);
   radio.setPayloadSize(RF_SIZE);
   radio.setAutoAck(true);
+  radio.enableAckPayload();
   radio.setChannel(channel);
   radio.openReadingPipe(1,RF_ADDR_CONTROL);
   radio.openWritingPipe(RF_ADDR_BADGE);
@@ -138,14 +137,15 @@ void setup(void)
   }
   Serial.println(" Done");
   wdt_reset();
-  radio.startListening();
 }
 
 void loop()
 {
+  static unsigned long recvTime = millis();
   if (Serial.available())
   {
     char data[RF_SIZE];
+    unsigned long cmdtime = millis();
     switch(Serial.read())
     {
       case 'L':
@@ -156,29 +156,21 @@ void loop()
         data[4] = Serial.parseInt();
         data[5] = Serial.parseInt();
         data[6] = Serial.parseInt();
-        radio.stopListening();
-        radio.write(data, RF_SIZE);
-        radio.startListening();
+        while (!radio.write(data, RF_SIZE));
       break;
       case 'B':
         data[0] = 'B';
         data[1] = Serial.parseInt();
-        radio.stopListening();
-        radio.write(data, RF_SIZE);
-        radio.startListening();
+        while (!radio.write(data, RF_SIZE));
       break;
       case 'M':
         data[0] = 'M';
         data[1] = Serial.parseInt();
-        radio.stopListening();
-        radio.write(data, RF_SIZE);
-        radio.startListening();
+        while (!radio.write(data, RF_SIZE));
       break;
       case 'N':
         data[0] = 'N';
-        radio.stopListening();
-        radio.write(data, RF_SIZE);
-        radio.startListening();
+        while (!radio.write(data, RF_SIZE));
       break;
       case 'R':
         memset(data, 0, sizeof(data));
@@ -187,12 +179,11 @@ void loop()
         Serial.print("Retune to ");
         Serial.print((int)data[1]);
         wdt_enable(WDTO_8S);
-        radio.stopListening();
         while (!radio.write(data, RF_SIZE))
         {
-          Serial.print(".");
-          bring_up_radio(0);
-          radio.stopListening();
+          Serial.print("+");
+          if (millis() - cmdtime > 100)
+            bring_up_radio(0);
         }
         wdt_enable(WDTO_2S);
         bring_up_radio(data[1]);
@@ -203,31 +194,63 @@ void loop()
             delay(10);
         }
         Serial.println(" Done");
-        radio.startListening();
       break;
       case 'K':
         data[0] = 'K';
-        radio.stopListening();
         radio.write(data, RF_SIZE);
-        radio.startListening();
       break;
     }
+    recvTime = millis();
   }
-  static unsigned long pingTime = 0;
-  if (millis() - pingTime > 300)
+  if (radio.available() || radio.isAckPayloadAvailable())
   {
     byte data[RF_SIZE];
     memset(data, 0, RF_SIZE);
-    data[0] = 'P';
-    radio.stopListening();
-    pingTime = millis();
-    if(radio.write(data, RF_SIZE))
+    if (radio.read( &data, RF_SIZE))
     {
-      wdt_reset();
+      recvTime = millis();
+      switch(data[0])
+      {
+        case 'P':
+          static unsigned long throughputCount = 0;
+          static unsigned long throughputTime = 0;
+          static float rate = 0;
+          throughputCount += RF_SIZE;
+          if (millis() - throughputTime >= 1000)
+          {
+            rate = (float)throughputCount / (millis() - throughputTime);
+            Serial.print("Ping ");
+            Serial.print(recvTime - *(unsigned long*)&data[7]);
+            Serial.print("ms");
+          
+            Serial.print(" {");
+            Serial.print(data[1]);
+            Serial.print(":");
+            Serial.print(data[2]);
+            Serial.print(":");
+            Serial.print(data[3]);
+          
+            Serial.print("} {");
+            Serial.print(data[4]);
+            Serial.print(":");
+            Serial.print(data[5]);
+            Serial.print(":");
+            Serial.print(data[6]);
+            Serial.print("}");
+            Serial.print(rate, 2);
+            Serial.println("KB/sec");
+            throughputTime = millis();
+            throughputCount = 0;
+          }
+          wdt_reset();
+        break;
+        
+        default:
+          Serial.print("RCV:");
+          Serial.println((char*)data);
+      }
     }
-    radio.startListening();
-  }
-  static unsigned long recvTime = 0;
+  }  
   if (recvTime && millis() - recvTime > 1000)
   {
     wdt_enable(WDTO_8S);
@@ -235,7 +258,6 @@ void loop()
     Serial.print("Ping Fail, Retune to ");
     Serial.print(target_channel);
     bring_up_radio(0);
-    radio.stopListening();
     char data[RF_SIZE];
     data[0] = 'R';
     data[1] = target_channel;
@@ -246,7 +268,6 @@ void loop()
     }
     Serial.print(" ACK ");
     bring_up_radio(target_channel);
-    radio.stopListening();
     data[0] = '0';
     while (!radio.write(data, RF_SIZE))
     {
@@ -256,41 +277,15 @@ void loop()
     wdt_enable(WDTO_2S);
     recvTime = millis();
   }
-  if (radio.available())
+  static unsigned long pingTime = 0;
+  if (millis() != pingTime)
   {
     byte data[RF_SIZE];
     memset(data, 0, RF_SIZE);
-    if (radio.read( &data, RF_SIZE))
-    {
-      recvTime = millis();
-      switch(data[0])
-      {
-        case 'P':
-          Serial.print("Ping ");
-          Serial.print(millis() - pingTime);
-          Serial.print("ms");
-          
-          Serial.print(" Left {R:");
-          Serial.print(data[1]);
-          Serial.print(" G:");
-          Serial.print(data[2]);
-          Serial.print(" B:");
-          Serial.print(data[3]);
-          
-          Serial.print("} Right {R:");
-          Serial.print(data[4]);
-          Serial.print(" G:");
-          Serial.print(data[5]);
-          Serial.print(" B:");
-          Serial.print(data[6]);
-          Serial.println("}");
-        break;
-        
-        default:
-          Serial.print("RCV:");
-          Serial.println((char*)data);
-      }
-    }
-  }  
+    data[0] = 'P';
+    *(unsigned long*)(data+1) = millis();
+    pingTime = millis();
+    radio.write(data, RF_SIZE);
+  }
 }
 
