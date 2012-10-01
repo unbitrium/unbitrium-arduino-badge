@@ -93,6 +93,7 @@ void bring_up_radio(byte channel)
   radio.setPayloadSize(RF_SIZE);
   radio.setAutoAck(true);
   radio.enableAckPayload();
+  radio.setDataRate(RF24_2MBPS);
   radio.setChannel(channel);
   radio.openReadingPipe(1,RF_ADDR_CONTROL);
   radio.openWritingPipe(RF_ADDR_BADGE);
@@ -202,6 +203,7 @@ void loop()
     }
     recvTime = millis();
   }
+  static unsigned long sendCounter = 0;
   if (radio.available() || radio.isAckPayloadAvailable())
   {
     byte data[RF_SIZE];
@@ -212,6 +214,7 @@ void loop()
       switch(data[0])
       {
         case 'P':
+          static unsigned long throughputStartPacket = 0;
           static unsigned long throughputCount = 0;
           static unsigned long throughputTime = 0;
           static float rate = 0;
@@ -238,7 +241,12 @@ void loop()
             Serial.print(data[6]);
             Serial.print("}");
             Serial.print(rate, 2);
-            Serial.println("KB/sec");
+            Serial.print("KB/sec (");
+            Serial.print(throughputCount/RF_SIZE);
+            Serial.print("/");
+            Serial.print(sendCounter - throughputStartPacket);
+            Serial.println(")");
+            throughputStartPacket = sendCounter;
             throughputTime = millis();
             throughputCount = 0;
           }
@@ -278,14 +286,12 @@ void loop()
     recvTime = millis();
   }
   static unsigned long pingTime = 0;
-  if (millis() != pingTime)
-  {
-    byte data[RF_SIZE];
-    memset(data, 0, RF_SIZE);
-    data[0] = 'P';
-    *(unsigned long*)(data+1) = millis();
-    pingTime = millis();
-    radio.write(data, RF_SIZE);
-  }
+  byte data[RF_SIZE];
+  memset(data, 0, RF_SIZE);
+  data[0] = 'P';
+  *(unsigned long*)(data+1) = millis();
+  pingTime = millis();
+  if (radio.write(data, RF_SIZE))
+    sendCounter++;
 }
 

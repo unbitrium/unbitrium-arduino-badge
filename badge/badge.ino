@@ -194,6 +194,7 @@ void check_rf()
     radio.setPayloadSize(RF_SIZE);
     radio.setAutoAck(true);
     radio.enableAckPayload();
+    radio.setDataRate(RF24_2MBPS);
     radio.setChannel(radio_channel);
     radio.openReadingPipe(1,RF_ADDR_BADGE);
     radio.openWritingPipe(RF_ADDR_CONTROL);
