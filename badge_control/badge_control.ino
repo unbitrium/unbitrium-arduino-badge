@@ -98,14 +98,14 @@ void bring_up_radio(byte channel)
   radio.openReadingPipe(1,RF_ADDR_CONTROL);
   radio.openWritingPipe(RF_ADDR_BADGE);
 }
-
+byte target_channel;
 void setup(void)
 {
   randomSeed(analogRead(5) + analogRead(4) + analogRead(3));
   Serial.begin(115200);
 
   Serial.print("Selecting channel ");
-  byte target_channel = find_channel();
+  target_channel = find_channel();
   Serial.println(target_channel);
   for (int x=0; x<target_channel; x++)
     Serial.print(" ");
@@ -184,12 +184,18 @@ void loop()
         memset(data, 0, sizeof(data));
         data[0] = 'R';
         data[1] = Serial.parseInt();
-        radio.stopListening();
-        radio.write(data, RF_SIZE);
-        
-        bring_up_radio(data[1]);
         Serial.print("Retune to ");
         Serial.print((int)data[1]);
+        wdt_enable(WDTO_8S);
+        radio.stopListening();
+        while (!radio.write(data, RF_SIZE))
+        {
+          Serial.print(".");
+          bring_up_radio(0);
+          radio.stopListening();
+        }
+        wdt_enable(WDTO_2S);
+        bring_up_radio(data[1]);
         data[0] = '0';
         while (!radio.write(data, RF_SIZE))
         {
@@ -208,7 +214,7 @@ void loop()
     }
   }
   static unsigned long pingTime = 0;
-  if (millis() - pingTime > 500)
+  if (millis() - pingTime > 300)
   {
     byte data[RF_SIZE];
     memset(data, 0, RF_SIZE);
@@ -221,12 +227,42 @@ void loop()
     }
     radio.startListening();
   }
+  static unsigned long recvTime = 0;
+  if (recvTime && millis() - recvTime > 1000)
+  {
+    wdt_enable(WDTO_8S);
+    target_channel = (target_channel + 3) % RF_CHANNELS;
+    Serial.print("Ping Fail, Retune to ");
+    Serial.print(target_channel);
+    bring_up_radio(0);
+    radio.stopListening();
+    char data[RF_SIZE];
+    data[0] = 'R';
+    data[1] = target_channel;
+    while (!radio.write(data, RF_SIZE))
+    {
+      Serial.print(".");
+      delay(10);
+    }
+    Serial.print(" ACK ");
+    bring_up_radio(target_channel);
+    radio.stopListening();
+    data[0] = '0';
+    while (!radio.write(data, RF_SIZE))
+    {
+      Serial.print(".");
+    }
+    Serial.println("Done");
+    wdt_enable(WDTO_2S);
+    recvTime = millis();
+  }
   if (radio.available())
   {
     byte data[RF_SIZE];
     memset(data, 0, RF_SIZE);
     if (radio.read( &data, RF_SIZE))
     {
+      recvTime = millis();
       switch(data[0])
       {
         case 'P':

@@ -188,7 +188,8 @@ void check_rf()
   if (!radioup)
   {
     // if radio is down, bring it up, also reset activity time
-    radiotime = millis() + 100; // listen for 100ms
+    if (radiotime < millis() + 100)
+      radiotime = millis() + 100; // listen for 100ms
     radio.begin();
     radio.powerUp();
     radio.setRetries(2,2);
@@ -212,7 +213,7 @@ void check_rf()
     {
       Serial.print("Radio Data ");
       Serial.println((char)data[0]);
-      radiotime = millis() + 1000;
+      radiotime = millis() + 500;
       switch(data[0])
       {
         case 'P':
@@ -259,12 +260,15 @@ void check_rf()
   {
     // if radio is up, but has been idle for too long
     // shut it down and reset to the lobby channel
+    boolean wasactive = radio_channel;
     RXLED0;
     radio.stopListening();
     radio.powerDown();
     radioup = false;
     radio_channel = 0;
     Serial.println("Radio Down");
+    if (wasactive)
+      radiotime = millis() + 10000;
     return;
   }
 }
@@ -290,7 +294,7 @@ void setup() {
   attachInterrupt(INT_BUTTON, button_press, FALLING);
 //  irrecv.enableIRIn(); // Start the receiver
   last_ir=millis();
-  
+  radiotime = millis() + 10000;
 }
 
 void power_save_sleep()
