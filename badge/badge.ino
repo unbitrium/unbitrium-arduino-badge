@@ -53,6 +53,11 @@ void button_press() {
     }
     delayMicroseconds(500000);
   }
+
+  static unsigned long presstime = 0;
+  if (millis() - presstime < 100)
+    return;
+  presstime = millis();
     
   TXLED0;
   RXLED0;
